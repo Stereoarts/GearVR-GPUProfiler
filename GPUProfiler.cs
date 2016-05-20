@@ -18,7 +18,6 @@ public class GPUProfiler : MonoBehaviour
 	Text _text;
 	RectTransform _textRectTransform;
 
-	string _gpu_minFreq;
 	string _gpu_maxFreq;
 
 	float _fps = 0.0f;
@@ -27,6 +26,15 @@ public class GPUProfiler : MonoBehaviour
 	Vector2 _cachedSizeDelta = Vector2.zero;
 
 	const float PixelsPerUnit = 8000.0f;
+
+	DeviceModel _deviceModel = DeviceModel.Unknown;
+
+	public enum DeviceModel
+	{
+		Unknown = -1,
+		SCV31,	// Galaxy S6
+		SCV33,	// Galaxy S7
+	}
 
 	void Awake()
 	{
@@ -45,6 +53,18 @@ public class GPUProfiler : MonoBehaviour
 				if( shader != null ) {
 					this.fontMaterial = new Material( shader );
 				}
+			}
+		}
+
+		string deviceModel = SystemInfo.deviceModel;
+		if( deviceModel != null ) {
+			switch( deviceModel ) {
+			case "samsung SCV31":
+				_deviceModel = DeviceModel.SCV31;
+                break;
+			case "samsung SCV33":
+				_deviceModel = DeviceModel.SCV33;
+				break;
 			}
 		}
 	}
@@ -83,8 +103,12 @@ public class GPUProfiler : MonoBehaviour
 		_text = text;
 		_textRectTransform = rectTransform;
 
-		_gpu_minFreq = _GetFileAllText_NoReturn ("/sys/devices/platform/gpusysfs/gpu_min_clock");
-		_gpu_maxFreq = _GetFileAllText_NoReturn ("/sys/devices/platform/gpusysfs/gpu_max_clock");
+		if( _deviceModel == DeviceModel.SCV31 ) {
+			_gpu_maxFreq = _GetGPUFreq( GPUFreqType.Max );
+		}
+		if( _deviceModel == DeviceModel.SCV33 ) {
+			_gpu_maxFreq = _GetGPUFreq( GPUFreqType.Max );
+		}
 
 		if( renderMode == RenderMode.WorldSpace ) {
 			_textRectTransform.sizeDelta = _canvasRectTransform.sizeDelta;
@@ -108,22 +132,20 @@ public class GPUProfiler : MonoBehaviour
 			_fpsCount = 0;
 			_updateTime = 0.0f;
 			StringBuilder str = new StringBuilder();
+			if( _deviceModel != DeviceModel.Unknown ) {
+				str.AppendLine( _GetDeviceName() );
+			}
 			str.Append( "FPS : " );
 			str.AppendLine( _fps.ToString() );
-			_DumpThermal( str, "CPU Temp : ", "/sys/devices/virtual/thermal/thermal_zone0/temp" );
-			//_DumpThermal( str, "REG Temp : ", "/sys/devices/virtual/thermal/thermal_zone1/temp" );
-			_DumpThermal( str, "BAT Temp : ", "/sys/devices/virtual/thermal/thermal_zone2/temp" );
+			str.Append( "CPU Temp : " );
+			str.AppendLine( _GetCPUTemp() );
 			str.Append( "GPU Busy : " );
-			str.AppendLine( _GetFileAllText_NoReturn( "/sys/devices/platform/gpusysfs/gpu_busy" ) );
+			str.AppendLine( _GetGPUBusy() );
 			str.Append( "GPU Clock : " );
-			str.Append( _GetFileAllText_NoReturn( "/sys/devices/platform/gpusysfs/gpu_clock" ) );
-			str.Append( " ( " );
-			str.Append( _gpu_minFreq );
+			str.Append( _GetGPUFreq( GPUFreqType.Cur ) );
 			str.Append( " / " );
 			str.Append( _gpu_maxFreq );
-			str.AppendLine( " )" );
-			str.Append( "GPU Voltage : " );
-			str.AppendLine( _GetFileAllText_NoReturn( "/sys/devices/platform/gpusysfs/gpu_voltage" ) );
+			str.AppendLine( "" );
 			_text.text = str.ToString();
 		} else {
 			++_fpsCount;
@@ -140,23 +162,92 @@ public class GPUProfiler : MonoBehaviour
 		}
 	}
 
-	static void _DumpThermal( StringBuilder str, string name, string path )
+	string _GetCPUTemp()
 	{
-		str.Append( name );
+		string path = "/sys/devices/virtual/thermal/thermal_zone0/temp";
+
 		string tempStr = _GetFileAllText_NoReturn( path );
 		int temp;
-		if( int.TryParse( tempStr, out temp ) ) {
-			str.AppendLine( (temp / 1000).ToString() );
-		} else {
-			str.AppendLine( "-" );
+		int divider = (_deviceModel == DeviceModel.SCV33) ? 10 : 1000;
+        if( int.TryParse( tempStr, out temp ) ) {
+			return (temp / divider).ToString();
 		}
+
+		return "-";
+	}
+
+	enum GPUFreqType
+	{
+		Cur,
+		Max,
+	}
+
+	string _GetDeviceName()
+	{
+		switch( _deviceModel ) {
+		case DeviceModel.SCV31: return "Galaxy S6";
+		case DeviceModel.SCV33: return "Galaxy S7";
+		}
+
+		return "-";
+	}
+
+	string _GetGPUFreq( GPUFreqType gpuFreqType )
+	{
+		if( _deviceModel == DeviceModel.Unknown ) {
+			return "-";
+		}
+			  
+		string path = "";
+
+		if( _deviceModel == DeviceModel.SCV31 ) {
+			switch( gpuFreqType ) {
+			case GPUFreqType.Cur: path = "/sys/devices/platform/gpusysfs/gpu_clock"; break;
+			case GPUFreqType.Max: path = "/sys/devices/platform/gpusysfs/gpu_max_clock"; break;
+			}
+		}
+		if( _deviceModel == DeviceModel.SCV33 ) {
+			switch( gpuFreqType ) {
+			case GPUFreqType.Cur: path = "/sys/class/kgsl/kgsl-3d0/gpuclk"; break;
+			case GPUFreqType.Max: path = "/sys/class/kgsl/kgsl-3d0/max_gpuclk"; break;
+			}
+		}
+
+		string tempStr = _GetFileAllText_NoReturn( path );
+		int temp;
+		int divider = (_deviceModel == DeviceModel.SCV33) ? 1000000 : 1;
+		if( int.TryParse( tempStr, out temp ) ) {
+			return (temp / divider).ToString();
+		} else {
+			return "-";
+		}
+	}
+
+	string _GetGPUBusy()
+	{
+		if( _deviceModel == DeviceModel.SCV31 ) {
+			return _GetFileAllText_NoReturn( "/sys/devices/platform/gpusysfs/gpu_busy" );
+        }
+		if( _deviceModel == DeviceModel.SCV33 ) {
+			string str = _GetFileAllText_NoReturn( "/sys/class/kgsl/kgsl-3d0/gpubusy" );
+			string[] splitStr = str.Split(' ');
+			if( splitStr != null && splitStr.Length == 2 ) {
+				int v0, v1;
+				if( int.TryParse( splitStr[0], out v0 ) && int.TryParse( splitStr[1], out v1 ) ) {
+					return (((long)v0 * 100) / (long)v1).ToString();
+				}
+			}
+			return str; // Failsafe.
+		}
+
+		return "-";
 	}
 
 	static string _GetFileAllText_NoReturn( string path )
 	{
-		#if !UNITY_ANDROID || UNITY_EDITOR
+#if !UNITY_ANDROID || UNITY_EDITOR
 		return "";
-		#else
+#else
 		try {
 			using( StreamReader sr = new StreamReader( path, System.Text.ASCIIEncoding.ASCII ) ) {
 				string r = sr.ReadToEnd();
@@ -186,7 +277,7 @@ public class GPUProfiler : MonoBehaviour
 		} catch( System.Exception ) {
 			return "";
 		}
-		#endif
+#endif
 	}
 
 }

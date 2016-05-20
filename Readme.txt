@@ -3,11 +3,18 @@ GPUProfiler
 
 ■ 用途
 
-- Unity 上で、Glaxy S6/Galaxy S6 edge の GPU 情報を出力するためのコンポーネントです。
+- Unity 上で、Gear VR の GPU 情報を出力するためのコンポーネントです。
 
 ■ 導入方法
 
 - 任意のゲームオブジェクトに GPUProfiler.cs をアタッチしてください。
+
+■ 対応端末
+
+- Galaxy S6
+- Galaxy S6 edge
+- Galaxy S7
+- Galaxy S7 edge
 
 ■ 免責事項
 
@@ -17,6 +24,7 @@ GPUProfiler
 
 ■ 履歴
 
+2016/05/20 Galaxy S7 に対応
 2016/04/28 WorldSpace に配置できるように対応
 2015/04/26(2) CPUとバッテリーの温度出力に対応
 2015/04/26 初版
