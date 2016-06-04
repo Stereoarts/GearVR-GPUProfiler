@@ -24,6 +24,7 @@ GPUProfiler
 
 ■ 履歴
 
+2016/06/04 CPU Level / GPU Level の調整・表示に対応
 2016/05/20 Galaxy S7 に対応
 2016/04/28 WorldSpace に配置できるように対応
 2015/04/26(2) CPUとバッテリーの温度出力に対応
