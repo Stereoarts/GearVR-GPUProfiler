@@ -1,22 +1,50 @@
-﻿using UnityEngine;
+﻿#define GPUPROFILER_OVRPLUGIN
+#define GPUPROFILER_OVRPLUGIN_IMMEDIATE
+//#define GPUPROFILER_OVRPLUGIN_UNLIMITED // Warning!!! Might be crash hardware.
+
+using UnityEngine;
 using UnityEngine.UI;
 using System.Collections;
 using System.IO;
 using System.Text;
+using System.Runtime.InteropServices;
 
 [ExecuteInEditMode]
 public class GPUProfiler : MonoBehaviour
 {
+#if GPUPROFILER_OVRPLUGIN
+#if GPUPROFILER_OVRPLUGIN_IMMEDIATE
+	const int KeyCpuLevel = 7;
+	const int KeyGpuLevel = 8;
+#if UNITY_EDITOR
+	static float ovrp_GetFloat(int keyValue) { return 0.0f; }
+	static int ovrp_SetFloat(int keyValue, float f) { return 0; }
+#else
+	[DllImport("OVRPlugin", CallingConvention = CallingConvention.Cdecl)]
+	static extern float ovrp_GetFloat(int keyValue);
+	[DllImport("OVRPlugin", CallingConvention = CallingConvention.Cdecl)]
+	static extern int ovrp_SetFloat(int keyValue, float f);
+#endif
+#endif
+#endif
+
 	public Font font;
 	public Material fontMaterial;
 	public float updateInterval = 0.25f;
 	public float fontSize = 0.025f;
 	public RenderMode renderMode = RenderMode.WorldSpace;
+	[Range(0, 4)]
+	public int cpuLevel = 0;
+	[Range(0, 4)]
+	public int gpuLevel = 0;
 
 	RectTransform _canvasRectTransform;
 	
 	Text _text;
 	RectTransform _textRectTransform;
+
+	const float RectWidth	= 1.0f;
+	const float RectHeight	= 0.7f;
 
 	string _gpu_maxFreq;
 
@@ -40,13 +68,13 @@ public class GPUProfiler : MonoBehaviour
 	{
 		if( !Application.isPlaying ) {
 			if( this.font == null ) {
-				#if UNITY_4_0 || UNITY_4_1 || UNITY_4_2 || UNITY_4_3 || UNITY_4_4 || UNITY_4_5 || UNITY_4_6
-				#else
+#if UNITY_4_0 || UNITY_4_1 || UNITY_4_2 || UNITY_4_3 || UNITY_4_4 || UNITY_4_5 || UNITY_4_6 || UNITY_4_7
+#else
 				this.font = Font.CreateDynamicFontFromOSFont("Arial", 16);
 				if( this.font == null ) {
 					this.font = Font.CreateDynamicFontFromOSFont("Arial Bold", 16);
 				}
-				#endif
+#endif
 			}
 			if( this.fontMaterial == null || this.fontMaterial.shader == null ) {
 				Shader shader = Shader.Find("UI/GPUProfiler");
@@ -67,7 +95,44 @@ public class GPUProfiler : MonoBehaviour
 				break;
 			}
 		}
+
+		_UpdateLevel();
 	}
+
+	int _cached_cpuLevel = -1;
+	int _cached_gpuLevel = -1;
+
+#if GPUPROFILER_OVRPLUGIN_UNLIMITED
+	const int _MaxLevel = 4;
+#else
+	const int _MaxLevel = 3;
+#endif
+
+	void _UpdateLevel()
+	{
+#if GPUPROFILER_OVRPLUGIN
+		if( _cached_cpuLevel != cpuLevel ) {
+			_cached_cpuLevel = cpuLevel;
+			if( cpuLevel > 0 ) {
+#if GPUPROFILER_OVRPLUGIN_IMMEDIATE
+				ovrp_SetFloat( KeyCpuLevel, (float)Mathf.Clamp( cpuLevel, 1, _MaxLevel ) );
+#else
+				OVRPlugin.cpuLevel = cpuLevel;
+#endif
+			}
+		}
+		if( _cached_gpuLevel != gpuLevel ) {
+			_cached_gpuLevel = gpuLevel;
+			if( gpuLevel > 0 ) {
+#if GPUPROFILER_OVRPLUGIN_IMMEDIATE
+				ovrp_SetFloat( KeyGpuLevel, (float)Mathf.Clamp( gpuLevel, 1, _MaxLevel ) );
+#else
+				OVRPlugin.gpuLevel = gpuLevel;
+#endif
+			}
+		}
+#endif
+			}
 
 	void Start()
 	{
@@ -87,7 +152,7 @@ public class GPUProfiler : MonoBehaviour
 		if( renderMode == RenderMode.WorldSpace ) {
 			canvasScaler.dynamicPixelsPerUnit = PixelsPerUnit;
 			canvasScaler.referencePixelsPerUnit = PixelsPerUnit;
-			_canvasRectTransform.sizeDelta = new Vector2( 1.0f, 0.5f );
+			_canvasRectTransform.sizeDelta = new Vector2( RectWidth, RectHeight );
 		}
 
 		GameObject go = new GameObject ();
@@ -113,7 +178,7 @@ public class GPUProfiler : MonoBehaviour
 		if( renderMode == RenderMode.WorldSpace ) {
 			_textRectTransform.sizeDelta = _canvasRectTransform.sizeDelta;
 			_text.fontSize = 32;
-			this.fontMaterial.SetFloat( "_OutlineOffset", 0.01f );
+			this.fontMaterial.SetFloat( "_OutlineOffset", 0.008f );
 		} else {
 			this.fontMaterial.SetFloat( "_OutlineOffset", 0.0025f );
 		}
@@ -134,6 +199,8 @@ public class GPUProfiler : MonoBehaviour
 			StringBuilder str = new StringBuilder();
 			if( _deviceModel != DeviceModel.Unknown ) {
 				str.AppendLine( _GetDeviceName() );
+			} else {
+				str.AppendLine( "Uknown" );
 			}
 			str.Append( "FPS : " );
 			str.AppendLine( _fps.ToString() );
@@ -146,6 +213,15 @@ public class GPUProfiler : MonoBehaviour
 			str.Append( " / " );
 			str.Append( _gpu_maxFreq );
 			str.AppendLine( "" );
+#if GPUPROFILER_OVRPLUGIN
+#if GPUPROFILER_OVRPLUGIN_IMMEDIATE
+			str.AppendLine( "CPU Level : " + (int)ovrp_GetFloat(KeyCpuLevel) );
+			str.AppendLine( "GPU Level : " + (int)ovrp_GetFloat(KeyGpuLevel) );
+#else
+			str.AppendLine( "CPU Level : " + OVRPlugin.cpuLevel );
+			str.AppendLine( "GPU Level : " + OVRPlugin.gpuLevel );
+#endif
+#endif
 			_text.text = str.ToString();
 		} else {
 			++_fpsCount;
