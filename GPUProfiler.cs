@@ -43,8 +43,8 @@ public class GPUProfiler : MonoBehaviour
 	Text _text;
 	RectTransform _textRectTransform;
 
-	const float RectWidth	= 1.0f;
-	const float RectHeight	= 0.7f;
+	const float CanvasRectWidth		= 1.0f;
+	const float CanvasRectHeight	= 0.7f;
 
 	string _gpu_maxFreq;
 
@@ -64,8 +64,30 @@ public class GPUProfiler : MonoBehaviour
 		SCV33,	// Galaxy S7
 	}
 
+	static string sceneName {
+		get {
+#if UNITY_4_1 || UNITY_4_2 || UNITY_4_3 || UNITY_4_4 || UNITY_4_5 || UNITY_4_6 || UNITY_4_7 || UNITY_5_0 || UNITY_5_1 || UNITY_5_2
+			return Application.loadedLevelName;
+#else
+			return UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+#endif
+		}
+	}
+
+	static GPUProfiler _instance; // Singleton
+
 	void Awake()
 	{
+		if( Application.isPlaying ) {
+			if( _instance == null ) {
+				_instance = this;
+				GameObject.DontDestroyOnLoad( this.gameObject );
+			} else if( _instance != this ) {
+				GameObject.DestroyImmediate( this.gameObject );
+				return;
+			}
+		}
+
 		if( !Application.isPlaying ) {
 			if( this.font == null ) {
 #if UNITY_4_0 || UNITY_4_1 || UNITY_4_2 || UNITY_4_3 || UNITY_4_4 || UNITY_4_5 || UNITY_4_6 || UNITY_4_7
@@ -97,6 +119,13 @@ public class GPUProfiler : MonoBehaviour
 		}
 
 		_UpdateLevel();
+	}
+
+	void OnDestroy()
+	{
+		if( _instance == this ) {
+			_instance = null;
+		}
 	}
 
 	int _cached_cpuLevel = -1;
@@ -152,10 +181,10 @@ public class GPUProfiler : MonoBehaviour
 		if( renderMode == RenderMode.WorldSpace ) {
 			canvasScaler.dynamicPixelsPerUnit = PixelsPerUnit;
 			canvasScaler.referencePixelsPerUnit = PixelsPerUnit;
-			_canvasRectTransform.sizeDelta = new Vector2( RectWidth, RectHeight );
+			_canvasRectTransform.sizeDelta = new Vector2( CanvasRectWidth, CanvasRectHeight );
 		}
 
-		GameObject go = new GameObject ();
+		GameObject go = new GameObject();
 		go.transform.parent = this.transform;
 		go.transform.localPosition = Vector3.zero;
 		go.transform.localRotation = Quaternion.identity;
@@ -202,6 +231,7 @@ public class GPUProfiler : MonoBehaviour
 			} else {
 				str.AppendLine( "Uknown" );
 			}
+			str.AppendLine( sceneName );
 			str.Append( "FPS : " );
 			str.AppendLine( _fps.ToString() );
 			str.Append( "CPU Temp : " );
